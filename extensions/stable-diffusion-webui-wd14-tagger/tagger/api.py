@@ -102,7 +102,7 @@ class Api:
 
     def endpoint_interrogators(self):
         return models.InterrogatorsResponse(
-            models=list(utils.interrogators.keys())
+            models=utils.refresh_interrogators()
         )
 
     def endpoint_unload_interrogators(self):
