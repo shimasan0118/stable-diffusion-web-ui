@@ -6,6 +6,7 @@
  * Disable resize mode selection when A1111 img2img input is used.
  */
 (function () {
+    const cnetAllUnits = new Map/* <Element, ControlNetUnitTab> */();
     const cnetAllAccordions = new Set();
     onUiUpdate(() => {
         const ImgChangeType = {
@@ -63,9 +64,8 @@
         }
 
         class ControlNetUnitTab {
-            constructor(tab, accordion) {
+            constructor(tab) {
                 this.tab = tab;
-                this.accordion = accordion;
                 this.isImg2Img = tab.querySelector('.cnet-unit-enabled').id.includes('img2img');
 
                 this.enabledCheckbox = tab.querySelector('.cnet-unit-enabled input');
@@ -84,8 +84,6 @@
                 this.attachTabNavChangeObserver();
                 this.attachImageUploadListener();
                 this.attachImageStateChangeObserver();
-                this.attachA1111SendInfoObserver();
-                this.attachPresetDropdownObserver();
 
                 // Initial updates:
                 if (this.isImg2Img)
@@ -113,34 +111,6 @@
                     tabNavButton.classList.add('cnet-unit-active');
                 } else {
                     tabNavButton.classList.remove('cnet-unit-active');
-                }
-            }
-
-            updateActiveUnitCount() {
-                function getActiveUnitCount(checkboxes) {
-                    let activeUnitCount = 0;
-                    for (const checkbox of checkboxes) {
-                        if (checkbox.checked)
-                            activeUnitCount++;
-                    }
-                    return activeUnitCount;
-                }
-
-                const checkboxes = this.accordion.querySelectorAll('.cnet-unit-enabled input');
-                const span = this.accordion.querySelector('.label-wrap span');
-
-                // Remove existing badge.
-                if (span.childNodes.length !== 1) {
-                    span.removeChild(span.lastChild);
-                }
-                // Add new badge if necessary.
-                const activeUnitCount = getActiveUnitCount(checkboxes);
-                if (activeUnitCount > 0) {
-                    const div = document.createElement('div');
-                    div.classList.add('cnet-badge');
-                    div.classList.add('primary');
-                    div.innerHTML = `${activeUnitCount} unit${activeUnitCount > 1 ? 's' : ''}`;
-                    span.appendChild(div);
                 }
             }
 
@@ -212,7 +182,6 @@
             attachEnabledButtonListener() {
                 this.enabledCheckbox.addEventListener('change', () => {
                     this.updateActiveState();
-                    this.updateActiveUnitCount();
                 });
             }
 
@@ -274,59 +243,45 @@
                     subtree: true,
                 });
             }
+        }
 
-            /**
-             * Observe send PNG info buttons in A1111, as they can also directly
-             * set states of ControlNetUnit.
-             */
-            attachA1111SendInfoObserver() {
-                const pasteButtons = gradioApp().querySelectorAll('#paste');
-                const pngButtons = gradioApp().querySelectorAll(
-                    this.isImg2Img ?
-                        '#img2img_tab, #inpaint_tab' :
-                        '#txt2img_tab'
-                );
+        gradioApp().querySelectorAll('.cnet-unit-tab').forEach(tab => {
+            if (cnetAllUnits.has(tab)) return;
+            cnetAllUnits.set(tab, new ControlNetUnitTab(tab));
+        });
 
-                for (const button of [...pasteButtons, ...pngButtons]) {
-                    button.addEventListener('click', () => {
-                        // The paste/send img generation info feature goes
-                        // though gradio, which is pretty slow. Ideally we should
-                        // observe the event when gradio has done the job, but
-                        // that is not an easy task.
-                        // Here we just do a 2 second delay until the refresh.
-                        setTimeout(() => {
-                            this.updateActiveState();
-                            this.updateActiveUnitCount();
-                        }, 2000);
-                    });
-                }
+        function getActiveUnitCount(checkboxes) {
+            let activeUnitCount = 0;
+            for (const checkbox of checkboxes) {
+                if (checkbox.checked)
+                    activeUnitCount++;
             }
-
-            attachPresetDropdownObserver() {
-                const presetDropDown = this.tab.querySelector('.cnet-preset-dropdown');
-
-                new MutationObserver((mutationsList) => {
-                    for (const mutation of mutationsList) {
-                        if (mutation.removedNodes.length > 0) {
-                            setTimeout(() => {
-                                this.updateActiveState();
-                                this.updateActiveUnitCount();
-                                this.updateActiveControlType();
-                            }, 1000);
-                            return;
-                        }
-                    }
-                }).observe(presetDropDown, {
-                    childList: true,
-                    subtree: true,
-                });
-            }
+            return activeUnitCount;
         }
 
         gradioApp().querySelectorAll('#controlnet').forEach(accordion => {
             if (cnetAllAccordions.has(accordion)) return;
-            accordion.querySelectorAll('.cnet-unit-tab')
-                .forEach(tab => new ControlNetUnitTab(tab, accordion));
+            const checkboxes = accordion.querySelectorAll('.cnet-unit-enabled input');
+            if (!checkboxes) return;
+
+            const span = accordion.querySelector('.label-wrap span');
+            checkboxes.forEach(checkbox => {
+                checkbox.addEventListener('change', () => {
+                    // Remove existing badge.
+                    if (span.childNodes.length !== 1) {
+                        span.removeChild(span.lastChild);
+                    }
+                    // Add new badge if necessary.
+                    const activeUnitCount = getActiveUnitCount(checkboxes);
+                    if (activeUnitCount > 0) {
+                        const div = document.createElement('div');
+                        div.classList.add('cnet-badge');
+                        div.classList.add('primary');
+                        div.innerHTML = `${activeUnitCount} unit${activeUnitCount > 1 ? 's' : ''}`;
+                        span.appendChild(div);
+                    }
+                });
+            });
             cnetAllAccordions.add(accordion);
         });
     });
